@@ -1,41 +1,243 @@
-# Network Security Analysis with Wireshark 🌐  
-[![Academic Project](https://img.shields.io/badge/MSc%20Project-Wireshark%20Labs-blue)](https://github.com/Mohammad-mo-02)
-
-This project demonstrates network traffic analysis using **Wireshark** as part of the MSc Cybersecurity module *COS7055-B: Network & Security*. A `.pcapng` file was analysed for FTP communication, TCP session management, and protocol behaviour — identifying insecure credentials and network vulnerabilities.
+# Network Security & Traffic Analysis Laboratory  
+### Wireshark Protocol Inspection & TCP Session Analysis
 
 ---
 
- 📁 Included Files
+## Executive Overview
 
-| File | Description |
-|------|-------------|
-| `Wireshark-Network-Analysis-Report.pdf` | Coursework-based analysis covering TCP sessions, FTP credentials, and session teardown. |
-| `assignment.pcapng` | Raw packet capture analysed using Wireshark (contains FTP traffic and session flags). |
+This repository documents a structured network traffic analysis conducted using Wireshark as part of a postgraduate Network & Security module.
 
----
+The objective of this laboratory was to examine live packet captures in order to:
 
- 🛠️ Tools & Techniques Used
+- Analyse transport-layer communication behaviour  
+- Identify protocol usage within active sessions  
+- Inspect authentication mechanisms at packet level  
+- Examine TCP three-way handshake mechanics  
+- Analyse TCP session termination sequencing  
+- Understand ephemeral port allocation and connection tracking  
 
-- 🧪 **Wireshark** – Packet filtering, protocol analysis  
-- 🌐 **TCP/IP Stack** – Session handshake, teardown, port allocation  
-- 🔍 **FTP Traffic Analysis** – Username/password in plaintext  
-- 🔐 **Vulnerability Highlighting** – Insecure protocols (FTP), spoofing risk, plaintext credentials
+Rather than treating Wireshark as a passive observation tool, this exercise focused on interpreting packet-level behaviour with precision and security awareness.
 
----
-
- 📚 Learning Outcomes
-
-- ✅ Identified common internet protocols (TCP, UDP, DNS, ARP)  
-- ✅ Analysed raw packet data for login credentials  
-- ✅ Described TCP 3-way and 4-way handshake with technical accuracy  
-- ✅ Understood port behaviour (ephemeral ports, port 21 FTP)  
-- ✅ Demonstrated secure communication vs insecure protocols
+All captures were conducted in a controlled academic environment.
 
 ---
 
- 🏷️ Academic Context
+# 1. Local Machine Identification
 
-> This analysis was part of a summative assessment for the module **COS7055-B: Network and Security** as part of my MSc Cybersecurity degree at the University of Bradford.
+The first stage involved identifying the local machine’s IP configuration using standard operating system tools (`ipconfig` / `ifconfig`).
 
-📧 Contact: arsalanmahmood893@gmail.com  
-🔗 [LinkedIn](https://www.linkedin.com/in/mohammad-mahmood-ba1a321ba)
+The local IP address observed during packet capture was: 192.168.0.242
+
+
+This private address indicates the host was operating within a local area network (RFC1918 address space). Identifying the host address is critical before beginning packet inspection, as it enables accurate filtering and session tracing within Wireshark.
+
+---
+
+# 2. Protocol Identification & Port Behaviour
+
+Using Wireshark’s protocol column, several active protocols were observed during live capture:
+
+- TCP (Transmission Control Protocol)  
+- UDP (User Datagram Protocol)  
+- ARP (Address Resolution Protocol)  
+- mDNS (Multicast DNS)  
+- DNS (Domain Name System)  
+
+This confirms a multi-layered communication environment including:
+
+- Transport layer traffic (TCP/UDP)  
+- Local network resolution (ARP)  
+- Service discovery (mDNS)  
+- Name resolution (DNS)  
+
+One observed connection utilised **destination port 21**, which is a well-known port assigned to FTP services under IANA standards.
+
+The source port, for example `51959`, was dynamically allocated by the operating system. This is known as an ephemeral port.
+
+Ephemeral ports are automatically selected from a high-numbered range to uniquely identify client-side sessions. They allow multiple simultaneous outbound connections without port collision.
+
+This illustrates the TCP socket structure:
+Source IP + Source Port → Destination IP + Destination Port
+
+
+Together, these four elements uniquely define a TCP session.
+
+---
+
+# 3. Credential Exposure Analysis (FTP Case Study)
+
+One of the most security-significant findings during analysis involved FTP authentication traffic.
+
+### Observed Packets
+
+- Packet #6946 – USER command  
+- Packet #7426 – PASS command  
+
+### Details
+
+Source IP: `192.168.0.242`  
+Destination IP: `130.14.250.13`  
+Destination Port: `21`  
+
+The USER command transmitted: Username: anonymous
+
+The PASS command transmitted: Password: mmahmo51@bradford.ac.uk
+
+
+### Security Observation
+
+Both credentials were transmitted in plaintext.
+
+This demonstrates a fundamental weakness in traditional FTP protocol design: it provides no encryption for authentication traffic.
+
+Any attacker positioned within the same network segment (for example via ARP spoofing or compromised switch access) could capture these credentials without triggering authentication alerts.
+
+This maps to:
+
+- Cleartext Transmission of Sensitive Information (CWE-319)  
+- Cryptographic Failures (OWASP A02:2021 equivalent concept)
+
+This exercise demonstrates how protocol-level insecurity can exist even when application functionality operates correctly.
+
+---
+
+# 4. TCP Three-Way Handshake Analysis
+
+The initial TCP connection establishment was examined by filtering for the first SYN packet in the session between the local host and the remote FTP server.
+
+### Observed Packet
+
+Packet Number: 6956  
+Source IP: `192.168.0.242`  
+Destination IP: `130.14.250.13`  
+Source Port: `51959`  
+Destination Port: `21`  
+Sequence Number: `1888387770`  
+Window Size: `7207`  
+Header Length: 20 bytes  
+
+### Initial Sequence Number (ISN)
+
+The sequence number `1888387770` represents the Initial Sequence Number (ISN).
+
+ISNs are pseudo-randomly generated by the operating system to:
+
+- Prevent sequence prediction attacks  
+- Ensure session uniqueness  
+- Maintain packet ordering reliability  
+
+Randomisation protects against TCP spoofing and session hijacking attempts.
+
+---
+
+# 5. SYN-ACK Response Analysis
+
+In the corresponding response packet, the server acknowledged the client’s SYN request.
+
+Key values observed:
+
+- SYN bit set  
+- ACK bit set  
+- Acknowledgement number incremented by 1  
+
+The acknowledgement number confirms receipt of the client’s initial SYN segment.
+
+This establishes synchronisation between both hosts and completes the second step of the TCP three-way handshake.
+
+The use of synchronised sequence and acknowledgement numbers ensures reliable, ordered delivery of data.
+
+---
+
+# 6. TCP Session Termination Analysis
+
+TCP termination differs from establishment because TCP is full-duplex. Each direction must be closed independently.
+
+The session termination involved four packets:
+
+### Packet 1 – Client Acknowledgement
+Client acknowledges last received data.
+
+### Packet 2 – Server FIN, ACK
+Server signals intention to close its transmission stream.
+
+### Packet 3 – Client FIN, ACK
+Client acknowledges server FIN and signals its own closure.
+
+### Packet 4 – Final ACK
+Server acknowledges client FIN, completing termination.
+
+This four-step closure ensures:
+
+- No data loss  
+- Ordered shutdown  
+- Session integrity  
+- Traceable lifecycle completion  
+
+Unlike abrupt termination (RST flag), this graceful closure maintains protocol discipline.
+
+---
+
+# 7. Port Number Behaviour During Termination
+
+Throughout the session:
+
+- The client used an ephemeral port (e.g., 51893 / 51959 range)  
+- The server consistently used its service port (21 or 443 depending on session)  
+
+Even though the port numbers differ, the combination of:
+
+Source IP
+Source Port
+Destination IP
+Destination Port
+
+
+uniquely identifies the session.
+
+This allows multiple simultaneous connections between the same hosts without confusion.
+
+---
+
+# 8. Security Implications & Observations
+
+This laboratory reinforced several critical network security concepts:
+
+- Transport-layer reliability depends on sequence synchronisation  
+- Session integrity is maintained through ordered flag exchange  
+- Ephemeral ports prevent client-side collision  
+- Legacy protocols such as FTP expose credentials in plaintext  
+- Packet-level visibility provides powerful forensic insight  
+
+Wireshark is not merely a packet viewer — it is a protocol behaviour analysis tool. Understanding the logic behind each flag, number, and handshake step is essential for:
+
+- Network troubleshooting  
+- Incident response  
+- Intrusion detection  
+- Traffic anomaly investigation  
+
+---
+
+# Technical Competencies Demonstrated
+
+- Packet capture and protocol filtering  
+- TCP header field interpretation  
+- Sequence and acknowledgement number analysis  
+- Ephemeral port identification  
+- Credential interception detection  
+- Secure vs insecure protocol differentiation  
+- Structured traffic lifecycle analysis  
+
+---
+
+## Closing Reflection
+
+Modern cybersecurity defence relies heavily on visibility. Tools such as Wireshark expose the mechanics beneath application-layer behaviour and reveal how trust relationships are constructed at transport level.
+
+This laboratory demonstrates a structured understanding of TCP communication, authentication exposure risks, and protocol-level security weaknesses.
+
+The focus throughout was not simply capturing packets, but interpreting them with analytical precision.
+
+---
+
+
+
